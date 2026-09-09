@@ -32,7 +32,7 @@ In Chrome, open `chrome://extensions`, enable **Developer mode**, choose **Load 
 - `GET /api/download/history`
 - `GET /api/health`
 
-The downloader starts with the configured number of streams, writes range chunks directly to a temporary file, retries failed chunks up to three times, and resumes from already written byte ranges after pausing. Servers that do not advertise range support automatically use one stream.
+The downloader follows up to five safe public redirects, probes servers with `HEAD` and a ranged `GET` fallback, starts with the configured number of streams, writes range chunks directly to a temporary file, retries failed chunks up to three times, and resumes from already written byte ranges after pausing. Servers that do not support ranges automatically use one normal stream; resources without a known size are streamed until completion.
 
 ## Project layout
 

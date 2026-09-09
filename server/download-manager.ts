@@ -1,10 +1,12 @@
-import { createWriteStream, existsSync, mkdirSync, openSync, closeSync, ftruncateSync, readSync, writeSync } from "node:fs";
+import { mkdirSync, openSync, closeSync, ftruncateSync, writeSync } from "node:fs";
 import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { DownloadJob } from "./types";
+import { isSafePublicUrl } from "./url-safety";
 
 const MAX_RETRIES = 3;
 const DEFAULT_CONNECTIONS = 4;
+const MAX_REDIRECTS = 5;
 const DOWNLOAD_DIR = join(process.cwd(), "downloads");
 mkdirSync(DOWNLOAD_DIR, { recursive: true });
 
@@ -24,17 +26,18 @@ export class DownloadManager {
   }
 
   async analyze(url: string) {
-    const response = await fetch(url, { method: "HEAD", redirect: "manual" });
-    if (response.status >= 300 && response.status < 400) throw new Error("Redirecting download URLs are not supported by the safe analyzer");
-    if (!response.ok) throw new Error(`The server returned HTTP ${response.status}`);
-    const fileSize = Number(response.headers.get("content-length") ?? 0);
-    const supportsRange = /bytes/i.test(response.headers.get("accept-ranges") ?? "");
-    const fileName = this.fileName(url, response.headers.get("content-disposition"));
+    const probe = await this.probe(url);
+    const response = probe.response;
+    const rangeSize = response.headers.get("content-range")?.match(/\/(\d+)$/)?.[1];
+    const fileSize = Number(rangeSize ?? response.headers.get("content-length") ?? 0);
+    const supportsRange = response.status === 206 || /bytes/i.test(response.headers.get("accept-ranges") ?? "");
+    const fileName = this.fileName(probe.finalUrl, response.headers.get("content-disposition"));
     return {
+      resolvedUrl: probe.finalUrl,
       fileName,
       fileSize,
       contentType: response.headers.get("content-type") ?? "application/octet-stream",
-      supportsRange: supportsRange && fileSize > 0,
+      supportsRange,
       recommendedConnections: supportsRange ? Math.min(DEFAULT_CONNECTIONS, fileSize > 100_000_000 ? 8 : 4) : 1,
     };
   }
@@ -44,7 +47,7 @@ export class DownloadManager {
     const id = randomUUID();
     const filePath = join(DOWNLOAD_DIR, `${id}-${info.fileName}`);
     const job: DownloadJob = {
-      id, fileName: info.fileName, url, fileSize: info.fileSize, downloaded: 0, speed: 0, eta: 0,
+      id, fileName: info.fileName, url: info.resolvedUrl, fileSize: info.fileSize, downloaded: 0, speed: 0, eta: 0,
       connections: info.supportsRange ? Math.max(1, Math.min(16, connectionCount)) : 1,
       status: "downloading", supportsRange: info.supportsRange, retries: 0, createdAt: new Date().toISOString(), outputPath: filePath,
     };
@@ -71,6 +74,14 @@ export class DownloadManager {
     if (job.status !== "paused") return job;
     job.status = "downloading";
     const filePath = job.outputPath!;
+    if (!job.supportsRange) {
+      const handle = openSync(filePath, "w+");
+      ftruncateSync(handle, 0);
+      closeSync(handle);
+      job.downloaded = 0;
+      job.speed = 0;
+      job.eta = 0;
+    }
     this.controllers.set(id, new AbortController());
     void this.run(job, job.fileSize, filePath);
     return job;
@@ -90,7 +101,7 @@ export class DownloadManager {
     })).filter((range) => range.start <= range.end);
     this.ranges.set(job.id, ranges);
     if (!fileSize) {
-      job.status = "failed";
+      await this.downloadUnknownLength(job, filePath);
       return;
     }
     const started = Date.now();
@@ -127,11 +138,13 @@ export class DownloadManager {
 
   private async downloadRange(job: DownloadJob, range: Range, filePath: string) {
     const start = range.start + range.done;
+    const rangeRequested = job.supportsRange;
     const response = await fetch(job.url, {
-      headers: { Range: `bytes=${start}-${range.end}` },
+      headers: rangeRequested ? { Range: `bytes=${start}-${range.end}` } : undefined,
       signal: this.controllers.get(job.id)?.signal,
     });
     if (!response.ok || !response.body) throw new Error(`Chunk request returned HTTP ${response.status}`);
+    if (rangeRequested && response.status !== 206) throw new Error("The server did not honor the requested byte range");
     const handle = openSync(filePath, "r+");
     const reader = response.body.getReader();
     const started = Date.now();
@@ -151,6 +164,74 @@ export class DownloadManager {
     } finally {
       closeSync(handle);
     }
+  }
+
+  private async downloadUnknownLength(job: DownloadJob, filePath: string) {
+    try {
+      const response = await fetch(job.url, { signal: this.controllers.get(job.id)?.signal });
+      if (!response.ok || !response.body) throw new Error(`Download returned HTTP ${response.status}`);
+      const handle = openSync(filePath, "w+");
+      const reader = response.body.getReader();
+      const started = Date.now();
+      try {
+        while (true) {
+          if (job.status !== "downloading") return;
+          const { done, value } = await reader.read();
+          if (done) break;
+          writeSync(handle, Buffer.from(value), 0, value.byteLength, job.downloaded);
+          job.downloaded += value.byteLength;
+          job.speed = Math.round(job.downloaded / Math.max(1, (Date.now() - started) / 1000));
+        }
+      } finally {
+        closeSync(handle);
+      }
+      if (job.status === "downloading") job.status = "completed";
+    } catch (error) {
+      if (job.status === "downloading") {
+        job.status = "failed";
+        console.error(`Download ${job.id} failed`, error);
+      }
+    }
+  }
+
+  private async probe(url: string) {
+    let current = url;
+    for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
+      if (!isSafePublicUrl(current)) throw new Error("A redirect pointed to a private or local address");
+      let response = await fetch(current, {
+        method: "HEAD",
+        redirect: "manual",
+        headers: { "User-Agent": "SmartDownloadAccelerator/1.0" },
+      });
+      if (response.status >= 300 && response.status < 400) {
+        current = this.redirectTarget(current, response.headers.get("location"));
+        continue;
+      }
+      if (response.ok && Number(response.headers.get("content-length") ?? 0) > 0) {
+        return { response, finalUrl: current };
+      }
+      if ([403, 405, 406, 410, 415, 501].includes(response.status) || !response.ok || !response.headers.get("content-length")) {
+        response = await fetch(current, {
+          headers: { Range: "bytes=0-0", "User-Agent": "SmartDownloadAccelerator/1.0" },
+          redirect: "manual",
+        });
+        if (response.status >= 300 && response.status < 400) {
+          current = this.redirectTarget(current, response.headers.get("location"));
+          continue;
+        }
+      }
+      if (!response.ok) throw new Error(`The server returned HTTP ${response.status}`);
+      await response.body?.cancel();
+      return { response, finalUrl: current };
+    }
+    throw new Error("Too many redirects");
+  }
+
+  private redirectTarget(from: string, location: string | null) {
+    if (!location) throw new Error("The server returned an invalid redirect");
+    const target = new URL(location, from).toString();
+    if (!isSafePublicUrl(target)) throw new Error("A redirect pointed to a private or local address");
+    return target;
   }
 
   private totalDownloaded(ranges: Range[]) {

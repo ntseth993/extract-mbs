@@ -1,11 +1,11 @@
 import cors from "cors";
 import express from "express";
 import { createServer } from "node:http";
-import { isIP } from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { downloadManager } from "./download-manager";
+import { isSafePublicUrl } from "./url-safety";
 
 const app = express();
 const server = createServer(app);
@@ -15,13 +15,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 app.use(cors());
 app.use(express.json({ limit: "32kb" }));
 
-const urlSchema = z.string().url().refine((value) => {
-  const parsed = new URL(value);
-  if (!["http:", "https:"].includes(parsed.protocol)) return false;
-  const host = parsed.hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host === "::1" || isIP(host) === 4 && (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("127.") || host.startsWith("169.254.") || host.startsWith("172.") && Number(host.split(".")[1]) >= 16 && Number(host.split(".")[1]) <= 31)) return false;
-  return true;
-}, "Only public HTTP(S) URLs are supported");
+const urlSchema = z.string().url().refine(isSafePublicUrl, "Only public HTTP(S) URLs are supported");
 
 const asyncRoute = (handler: express.RequestHandler): express.RequestHandler => (request, response, next) => Promise.resolve(handler(request, response, next)).catch(next);
 

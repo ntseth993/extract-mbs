@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Download Accelerator</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header><div class="mark">⚡</div><div><strong>smart<span>download</span></strong><small>ACCELERATOR</small></div><span class="live">● ON</span></header>
+    <main>
+      <p class="kicker">NEW DOWNLOAD</p><h1>Use your connection better.</h1>
+      <label>File URL<input id="url" type="url" placeholder="Paste a download link" /></label>
+      <div class="network"><span>Network</span><strong id="network">Detecting…</strong><span class="dot"></span></div>
+      <button id="start">Analyze & accelerate <span>→</span></button>
+      <p id="message" class="message"></p>
+      <a id="dashboard" href="#" target="_blank">Open full dashboard ↗</a>
+    </main>
+    <footer><span>Adaptive connections: <b>ON</b></span><span id="streams">Starting with 4 streams</span></footer>
+    <script src="popup.js"></script>
+  </body>
+</html>

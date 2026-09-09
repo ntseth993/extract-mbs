@@ -1,0 +1,549 @@
+Build a complete **Smart Download Accelerator** as a browser extension with a backend server.
+
+## 1. Main Goal
+
+Create a browser extension that makes large file downloads as fast and reliable as possible by intelligently using the user's available network bandwidth.
+
+The system must NOT claim to extract MB directly from a SIM card or create free mobile data. The user's mobile-data bundle remains controlled by the network operator.
+
+Instead, the system should optimize legitimate downloads using:
+
+* Multiple simultaneous connections
+* HTTP range requests
+* Parallel downloading
+* Intelligent chunk sizing
+* Connection management
+* Download caching
+* Automatic retry
+* Download resumption
+* Bandwidth monitoring
+* Network-aware optimization
+
+The user should be able to enter or click a file download and have the extension accelerate the download automatically.
+
+---
+
+# 2. System Architecture
+
+Build three major components:
+
+### A. Browser Extension
+
+Use:
+
+* Manifest V3
+* JavaScript/TypeScript
+* HTML
+* CSS
+* Chrome Extension APIs
+
+The extension should contain:
+
+* Popup interface
+* Download manager
+* Background service worker
+* Network monitor
+* Download accelerator
+* Settings page
+* Download history
+
+### B. Backend Server
+
+Use:
+
+* Node.js
+* Express.js
+* REST API
+* WebSocket support where useful
+
+The backend should:
+
+* Manage download jobs
+* Analyze files
+* Determine whether range requests are supported
+* Coordinate download chunks
+* Cache files where legally permitted
+* Monitor download progress
+* Handle failed connections
+* Provide download statistics
+
+### C. Optional Database
+
+Use PostgreSQL or MySQL.
+
+Store:
+
+* Users
+* Download history
+* Download URLs
+* File metadata
+* Download statistics
+* Settings
+* Cache metadata
+
+Never store passwords or sensitive information in plain text.
+
+---
+
+# 3. Download Acceleration Algorithm
+
+When a user requests a file:
+
+1. Detect the download URL.
+2. Send a HEAD request where supported.
+3. Determine:
+
+   * File size
+   * Content type
+   * Server response
+   * Whether HTTP Range Requests are supported
+   * Content length
+4. If range requests are supported, divide the file into chunks.
+5. Start several simultaneous HTTP requests.
+
+Example:
+
+A 1 GB file could be divided into:
+
+```text
+Chunk 1 → 0–100 MB
+Chunk 2 → 100–200 MB
+Chunk 3 → 200–300 MB
+Chunk 4 → 300–400 MB
+...
+```
+
+Download multiple chunks simultaneously.
+
+6. Monitor each connection.
+7. Dynamically increase or decrease the number of connections depending on:
+
+   * Available bandwidth
+   * Latency
+   * Server response
+   * CPU usage
+   * Network stability
+8. Retry failed chunks automatically.
+9. Resume interrupted downloads.
+10. Verify every chunk.
+11. Reassemble the chunks in the correct order.
+12. Verify the final file.
+13. Save the completed file to the user's chosen download location.
+
+---
+
+# 4. Important Optimization
+
+Do NOT simply create 100 connections.
+
+Implement an adaptive algorithm.
+
+Example:
+
+```text
+Start with 4 connections
+
+Measure performance
+
+If bandwidth improves:
+    increase to 6
+
+If bandwidth improves:
+    increase to 8
+
+If bandwidth decreases:
+    reduce to 6
+
+If server rejects requests:
+    reduce connections
+
+Maximum:
+    configurable by the user
+```
+
+Default maximum should be reasonable, such as 8 connections.
+
+Allow the user to configure:
+
+```text
+Connections:
+[4]
+
+Maximum connections:
+[8]
+
+Chunk size:
+[10 MB]
+
+Automatic optimization:
+[ON]
+```
+
+---
+
+# 5. Smart Network Detection
+
+Detect whether the user is using:
+
+* Wi-Fi
+* Mobile data
+* Ethernet
+
+Where browser APIs permit.
+
+Display:
+
+```text
+Network: Mobile Data
+Estimated Speed: 18 Mbps
+Latency: 42 ms
+Download Accelerator: ON
+Active Connections: 6
+```
+
+Do not attempt to read, extract, modify, transfer, or manipulate the user's SIM/mobile-data balance.
+
+---
+
+# 6. Data Usage Display
+
+Show accurate estimates.
+
+Example:
+
+```text
+File size:             1.02 GB
+Downloaded:            640 MB
+Remaining:             380 MB
+Current speed:         14.2 MB/s
+Estimated time:        27 seconds
+```
+
+Make it clear that acceleration does NOT magically reduce the amount of data required by an uncompressed file.
+
+For example:
+
+```text
+1 GB file ≈ approximately 1 GB network transfer
+```
+
+unless the actual file is compressed or a smaller version is intentionally selected.
+
+---
+
+# 7. Video Optimization
+
+For supported video sources, optionally provide:
+
+```text
+Data-saving options:
+
+360p
+480p
+720p
+1080p
+Original
+```
+
+The user should explicitly choose the desired quality.
+
+Do not bypass DRM, authentication, paywalls, copyright restrictions, or website security.
+
+---
+
+# 8. Download Manager UI
+
+Create a modern dashboard.
+
+Show:
+
+```text
+SMART DOWNLOAD ACCELERATOR
+
+Active Downloads
+
+Ubuntu.iso
+████████████████░░░░
+78%
+Speed: 24.5 MB/s
+ETA: 32 sec
+Connections: 8
+
+Movie.mp4
+██████████░░░░░░░░░░
+52%
+Speed: 12.1 MB/s
+ETA: 1 min 14 sec
+Connections: 6
+```
+
+Buttons:
+
+* Pause
+* Resume
+* Cancel
+* Retry
+* Open file
+* Open folder
+
+---
+
+#
+
+Use a modern responsive interface.
+
+---
+
+# 10. Download Detection
+
+The extension should detect downloads initiated by the browser where Chrome APIs allow it.
+
+Provide a context-menu option:
+
+```text
+Right click file/link
+        ↓
+"Download with Smart Accelerator"
+```
+
+When selected:
+
+```text
+Analyze server
+       ↓
+Check Range support
+       ↓
+Determine file size
+       ↓
+Create download job
+       ↓
+Parallel download
+       ↓
+Reassemble
+       ↓
+Verify
+       ↓
+Save
+```
+
+---
+
+# 11. Fallback System
+
+Not every server supports parallel range downloads.
+
+If Range Requests are unavailable:
+
+```text
+Range supported?
+       │
+   ┌───┴───┐
+  YES      NO
+   │        │
+Parallel   Normal
+download   download
+```
+
+The extension should automatically fall back to a normal download.
+
+---
+
+# 12. Security
+
+Implement:
+
+* HTTPS
+* Input validation
+* URL validation
+* Authentication if accounts are implemented
+* Rate limiting
+* Secure API keys
+* No arbitrary server-side URL fetching without protection
+* Protection against SSRF
+* File-type validation
+* File integrity checks
+* SHA-256 verification where appropriate
+
+Do not download or execute dangerous files automatically.
+
+---
+
+# 13. Backend API
+
+Create endpoints such as:
+
+```text
+POST /api/download/start
+POST /api/download/pause
+POST /api/download/resume
+POST /api/download/cancel
+GET  /api/download/:id
+GET  /api/download/:id/progress
+GET  /api/download/history
+POST /api/analyze-url
+```
+
+Return structured JSON responses.
+
+Example:
+
+```json
+{
+  "downloadId": "abc123",
+  "fileName": "example.zip",
+  "fileSize": 1073741824,
+  "supportsRange": true,
+  "recommendedConnections": 8
+}
+```
+
+---
+
+# 14. Error Handling
+
+Handle:
+
+* Network disconnection
+* Server timeout
+* HTTP 403
+* HTTP 404
+* HTTP 429
+* Server does not support ranges
+* Connection failure
+* Corrupted chunk
+* Insufficient disk space
+* Cancelled download
+* Browser restart
+* Computer restart
+
+Downloads should resume whenever technically possible.
+
+---
+
+# 15. Performance Dashboard
+
+Display:
+
+* Current speed
+* Average speed
+* Peak speed
+* Downloaded amount
+* Remaining amount
+* ETA
+* Active connections
+* Failed chunks
+* Retry count
+* Network type
+
+Also show:
+
+```text
+Normal estimated speed: 8.2 MB/s
+Accelerated speed:      21.7 MB/s
+Improvement:            164%
+```
+
+Only calculate improvement from actual measured speeds. Never fabricate performance numbers.
+
+---
+
+# 16. Project Structure
+
+Create a professional structure such as:
+
+```text
+smart-download-accelerator/
+│
+├── extension/
+│   ├── manifest.json
+│   ├── background/
+│   ├── popup/
+│   ├── dashboard/
+│   ├── settings/
+│   ├── downloader/
+│   ├── network/
+│   └── utils/
+│
+├── server/
+│   ├── src/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   ├── download/
+│   │   ├── middleware/
+│   │   └── utils/
+│   └── package.json
+│
+├── database/
+│   ├── migrations/
+│   └── schema/
+│
+├── README.md
+└── .env.example
+```
+
+---
+
+# 17. Testing
+
+Create tests for:
+
+* Small downloads
+* Large downloads
+* Range-supported servers
+* Range-disabled servers
+* Interrupted downloads
+* Failed chunks
+* Slow networks
+* Fast networks
+* Mobile networks
+* Wi-Fi
+* Resume functionality
+* File integrity
+* Multiple simultaneous downloads
+
+Test with files such as:
+
+```text
+10 MB
+100 MB
+500 MB
+1 GB
+```
+
+Do not claim that the accelerator makes downloads faster in every situation. Measure and report actual performance.
+
+---
+
+# 18. Important Product Principle
+
+The application must clearly explain:
+
+> "Smart Download Accelerator optimizes how your internet connection downloads files. It cannot create free mobile data, extract MB from a SIM card, or bypass your mobile network operator's data limits."
+
+The goal is to make the **existing internet connection more efficiently utilized**, not to bypass telecom billing.
+
+---
+
+# 19. Deliverables
+
+Build the actual working MVP, not just a design.
+
+Provide:
+
+1. Complete Chrome extension
+2. Working Node.js/Express backend
+3. Download acceleration engine
+4. Parallel chunk downloader
+5. Automatic retry
+6. Resume support
+7. Dashboard
+8. Settings
+9. Download history
+10. API documentation
+11. Database schema
+12. Installation instructions
+13. Testing instructions
+14. Production deployment instructions
+
+Use clean, modular, maintainable code and explain how each major component works.

@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Smart Download Accelerator",
+  "version": "1.0.0",
+  "description": "Optimize legitimate downloads with adaptive parallel connections and reliable resume support.",
+  "permissions": ["downloads", "storage", "contextMenus", "notifications"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Smart Download Accelerator", "default_popup": "popup.html" },
+  "options_page": "popup.html",
+  "icons": {}
+}

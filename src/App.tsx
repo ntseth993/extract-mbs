@@ -140,14 +140,21 @@ function App() {
   };
 
   const startDownload = async () => {
-    if (!url.trim()) return;
+    const urls = url.split(/[\s,]+/).map((value) => value.trim()).filter(Boolean);
+    if (!urls.length) return;
     try {
-      const job = await api.start(url.trim(), connections);
-      setDownloads((items) => [job, ...items]);
+      if (urls.length === 1) {
+        const job = await api.start(urls[0], connections);
+        setDownloads((items) => [job, ...items]);
+        setToast("Download added to the accelerator");
+      } else {
+        const { started, failed } = await api.startBulk(urls, connections);
+        setDownloads((items) => [...started, ...items]);
+        setToast(failed.length ? `${started.length} of ${urls.length} downloads added` : `${started.length} downloads added to the accelerator`);
+      }
       setUrl("");
       setShowAdd(false);
       setSection("Active Downloads");
-      setToast("Download added to the accelerator");
     } catch (error) {
       setToast(error instanceof Error ? error.message : "Could not start download");
     }
@@ -260,7 +267,7 @@ function SettingsPanel({ connections, setConnections, autoOptimize, setAutoOptim
 }
 
 function DownloadModal({ url, setUrl, connections, setConnections, onClose, onStart }: { url: string; setUrl: (value: string) => void; connections: number; setConnections: (value: number) => void; onClose: () => void; onStart: () => void }) {
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal"><div className="modal-heading"><div><span className="panel-kicker">ACCELERATED DOWNLOAD</span><h3>What are we downloading?</h3></div><button className="icon-button" onClick={onClose}><X size={17} /></button></div><label>File URL<input autoFocus value={url} onChange={(event) => setUrl(event.target.value)} onKeyDown={(event) => event.key === "Enter" && onStart()} placeholder="https://example.com/your-file.zip" /></label><div className="modal-setting"><div><strong>Starting connections</strong><span>Adaptive mode can increase this up to 8.</span></div><div className="range-value"><input type="range" min="1" max="8" value={connections} onChange={(event) => setConnections(Number(event.target.value))} /><b>{connections}</b></div></div><div className="modal-info"><Zap size={15} /><span>We’ll check range support first. Servers without it automatically fall back to a normal download.</span></div><div className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" onClick={onStart} disabled={!url.trim()}><Zap size={16} /> Analyze & start</button></div></div></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal"><div className="modal-heading"><div><span className="panel-kicker">ACCELERATED DOWNLOAD</span><h3>What are we downloading?</h3></div><button className="icon-button" onClick={onClose}><X size={17} /></button></div><label>File URLs<textarea autoFocus rows={3} value={url} onChange={(event) => setUrl(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (event.metaKey || event.ctrlKey) && onStart()} placeholder={"Paste one or more links, one per line:\nhttps://example.com/your-file.zip"} /></label><div className="modal-setting"><div><strong>Starting connections</strong><span>Adaptive mode can increase this up to 8.</span></div><div className="range-value"><input type="range" min="1" max="8" value={connections} onChange={(event) => setConnections(Number(event.target.value))} /><b>{connections}</b></div></div><div className="modal-info"><Zap size={15} /><span>We’ll check range support first. Servers without it automatically fall back to a normal download. Paste several links to queue them all at once.</span></div><div className="modal-actions"><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" onClick={onStart} disabled={!url.trim()}><Zap size={16} /> Analyze & start</button></div></div></div>;
 }
 
 export default App;

@@ -6,6 +6,7 @@
 - The app is single-origin: `tsx server/index.ts` starts an Express server that serves both the `/api/*` endpoints and the Vite React dashboard (middleware mode) on one port. No separate frontend/backend services.
 - The port is controlled by the `PORT` env var (default 5000). The Base44 compose sets `PORT=3000` to match the preview port.
 - No database, no external services, no secrets required. Job metadata is in-memory; downloaded files go to `downloads/`.
+- Bulk downloads: `POST /api/download/bulk` takes `{ urls: string[], connections }` (1–50 URLs) and returns `{ started: DownloadJob[], failed: { url, error }[] }`, so one bad link does not block the rest. The dashboard's New-download modal accepts a pasted list (split on whitespace/commas) and uses this endpoint when more than one link is given.
 
 ## Running
 

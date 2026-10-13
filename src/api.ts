@@ -23,6 +23,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ url, connections }),
     }),
+  startBulk: (urls: string[], connections: number) =>
+    json<{ started: DownloadJob[]; failed: { url: string; error: string }[] }>("/api/download/bulk", {
+      method: "POST",
+      body: JSON.stringify({ urls, connections }),
+    }),
   list: () => json<DownloadJob[]>("/api/download/history"),
   action: (id: string, action: "pause" | "resume" | "cancel") =>
     json<DownloadJob>(`/api/download/${id}/${action}`, { method: "POST" }),

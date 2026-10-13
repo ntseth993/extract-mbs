@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { downloadManager } from "./download-manager";
+import type { DownloadJob } from "./types";
 import { isSafePublicUrl } from "./url-safety";
 
 const app = express();
@@ -29,6 +30,20 @@ app.post("/api/download/start", asyncRoute(async (request, response) => {
   const url = urlSchema.parse(request.body?.url);
   const connections = z.number().int().min(1).max(16).default(4).parse(request.body?.connections);
   response.status(201).json(await downloadManager.start(url, connections));
+}));
+app.post("/api/download/bulk", asyncRoute(async (request, response) => {
+  const urls = z.array(z.string()).min(1).max(50).parse(request.body?.urls);
+  const connections = z.number().int().min(1).max(16).default(4).parse(request.body?.connections);
+  const started: DownloadJob[] = [];
+  const failed: { url: string; error: string }[] = [];
+  await Promise.all(urls.map(async (candidate) => {
+    try {
+      started.push(await downloadManager.start(urlSchema.parse(candidate), connections));
+    } catch (error) {
+      failed.push({ url: candidate, error: error instanceof Error ? error.message : "Could not start download" });
+    }
+  }));
+  response.status(201).json({ started, failed });
 }));
 for (const action of ["pause", "resume", "cancel"] as const) {
   app.post(`/api/download/:id/${action}`, (request, response) => {

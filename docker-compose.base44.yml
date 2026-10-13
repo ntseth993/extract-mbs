@@ -17,7 +17,7 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-    command: ["sh", "-ec", "npm install --no-audit --no-fund && exec npm run dev"]
+    command: ["sh", "-ec", "npm install --no-audit --no-fund && exec ./node_modules/.bin/tsx server/index.ts"]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"]
       interval: 10s

@@ -39,11 +39,11 @@ for (const action of ["pause", "resume", "cancel"] as const) {
     }
   });
 }
+app.get("/api/download/history", (_request, response) => response.json(downloadManager.list()));
 app.get("/api/download/:id", (request, response) => {
   const job = downloadManager.get(request.params.id);
   return job ? response.json(job) : response.status(404).json({ error: "Download not found" });
 });
-app.get("/api/download/history", (_request, response) => response.json(downloadManager.list()));
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
   const message = error instanceof z.ZodError ? error.issues[0]?.message : error instanceof Error ? error.message : "Unexpected server error";
   response.status(400).json({ error: message });

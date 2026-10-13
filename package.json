@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
+  "description": "Optimize legitimate downloads with adaptive parallel connections and reliable resume support.",
+  "author": "Smart Download Accelerator",
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "vite build",
     "build:extension": "node scripts/build-extension.mjs",
+    "build:server": "node scripts/build-server.mjs",
+    "desktop": "npm run build && npm run build:server && electron-builder",
+    "desktop:dir": "npm run build && npm run build:server && electron-builder --dir",
     "check": "tsc --noEmit",
     "start": "tsx server/index.ts"
   },
@@ -28,6 +34,32 @@
     "@types/node": "^22.20.1",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.2",
     "typescript": "^5.9.3"
+  },
+  "build": {
+    "appId": "com.smartdownload.accelerator",
+    "productName": "Smart Download Accelerator",
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "dist-server/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility"
+    }
   }
 }

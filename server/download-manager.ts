@@ -1,5 +1,5 @@
 import { mkdirSync, openSync, closeSync, ftruncateSync, writeSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { DownloadJob } from "./types";
 import { isSafePublicUrl } from "./url-safety";
@@ -7,7 +7,7 @@ import { isSafePublicUrl } from "./url-safety";
 const MAX_RETRIES = 3;
 const DEFAULT_CONNECTIONS = 4;
 const MAX_REDIRECTS = 5;
-const DOWNLOAD_DIR = join(process.cwd(), "downloads");
+const DOWNLOAD_DIR = process.env.DOWNLOAD_DIR ? resolve(process.env.DOWNLOAD_DIR) : join(process.cwd(), "downloads");
 mkdirSync(DOWNLOAD_DIR, { recursive: true });
 
 type Range = { start: number; end: number; done: number; retries: number };

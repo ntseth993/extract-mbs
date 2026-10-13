@@ -1,5 +1,7 @@
 node_modules/
 dist/
+dist-server/
 dist-extension/
+release/
 downloads/
 .env

@@ -21,6 +21,17 @@ npm run build:extension
 
 In Chrome, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `dist-extension/`. The extension popup and right-click “Download with Smart Accelerator” action use the local dashboard API.
 
+## Build the desktop app
+
+The dashboard and API can be packaged as a standalone desktop application (Electron) for Windows, macOS and Linux.
+
+```bash
+npm run desktop        # web build + server bundle + installers -> release/
+npm run desktop:dir    # unpacked app, for a quick local check
+```
+
+Installers are produced per platform in CI via `.github/workflows/build-desktop.yml` (run it manually or push a `v*` tag). Each OS builds its own installer: Windows `.exe`, macOS `.dmg`, Linux `.AppImage`/`.deb`. macOS builds require a macOS runner and are unsigned unless you add an Apple Developer certificate.
+
 ## API
 
 - `POST /api/analyze-url` — validate a public URL, inspect headers, and determine range support

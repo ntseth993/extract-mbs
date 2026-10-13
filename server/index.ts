@@ -10,6 +10,7 @@ import { isSafePublicUrl } from "./url-safety";
 const app = express();
 const server = createServer(app);
 const port = Number(process.env.PORT ?? 5000);
+const host = process.env.HOST ?? "0.0.0.0";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 app.use(cors());
@@ -57,4 +58,4 @@ if (process.env.NODE_ENV !== "production") {
   app.get("*", (_request, response) => response.sendFile(resolve(root, "dist/index.html")));
 }
 
-server.listen(port, "0.0.0.0", () => console.log(`Smart Download Accelerator listening on port ${port}`));
+server.listen(port, host, () => console.log(`Smart Download Accelerator listening on ${host}:${port}`));

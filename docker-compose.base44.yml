@@ -12,6 +12,8 @@ services:
       - BASE44_PUBLIC_HOST_SUFFIX=${BASE44_PUBLIC_HOST_SUFFIX:-}
       - BASE44_SANDBOX_HOST_DOMAIN=${BASE44_SANDBOX_HOST_DOMAIN:-}
       - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS
+      # Sandbox-only: skip Electron's ~100MB binary download; desktop installers are built in CI.
+      - ELECTRON_SKIP_BINARY_DOWNLOAD=1
     volumes:
       - .:/app
       - /app/node_modules

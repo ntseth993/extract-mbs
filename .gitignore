@@ -4,6 +4,7 @@ dist-server/
 dist-extension/
 release/
 downloads/
+data/
 .env
 
 # Base44 preview environment (local sandbox only)

@@ -35,15 +35,22 @@ Installers are produced per platform in CI via `.github/workflows/build-desktop.
 ## API
 
 - `POST /api/analyze-url` — validate a public URL, inspect headers, and determine range support
-- `POST /api/download/start` — create a download job and begin parallel chunks
-- `POST /api/download/:id/pause`
-- `POST /api/download/:id/resume`
-- `POST /api/download/:id/cancel`
-- `GET /api/download/:id`
-- `GET /api/download/history`
+- `POST /api/download/start` — queue a download (optional `connections`, `priority`, sha256 `checksum`)
+- `POST /api/download/bulk` — queue up to 50 URLs at once; returns `{ started, failed }`
+- `POST /api/download/:id/pause` · `/resume` · `/retry` · `/cancel`
+- `DELETE /api/download/:id` — remove a job from the list
+- `POST /api/download/pause-all` · `/resume-all`
+- `GET /api/download/:id` · `GET /api/download/history`
+- `GET /api/settings` · `PUT /api/settings` — `{ downloadDir, maxConcurrent, connectionsPerDownload, autoStart }`
 - `GET /api/health`
 
-The downloader follows up to five safe public redirects, probes servers with `HEAD` and a ranged `GET` fallback, starts with the configured number of streams, writes range chunks directly to a temporary file, retries failed chunks up to three times, and resumes from already written byte ranges after pausing. Servers that do not support ranges automatically use one normal stream; resources without a known size are streamed until completion.
+### Download engine
+
+Requests are always sent with `Accept-Encoding: identity`, because HTTP byte ranges index the *compressed* body — mixing ranges with a compressed response silently corrupts the output.
+
+The engine follows up to five safe public redirects, probes servers with `HEAD` and a ranged `GET` fallback, then either splits the file into concurrent byte ranges or streams it in one connection when the server does not support ranges. Each download is written to a `.part` file and only renamed to its final name once it has fully verified, so a partial file is never mistaken for a finished one. Downloads are queued (`maxConcurrent` files at a time, highest priority first), retried up to three times with exponential backoff and jitter, and back off on `429`/`503` using `Retry-After`. A resumed download re-checks the remote file's `ETag`/`Last-Modified` and size first and starts over if the file changed. On completion the byte count, the final file size, and — when supplied — a sha256 checksum are all verified.
+
+Job history and settings are stored in `data/store.json` (atomic writes) and restored on startup; anything that was mid-download when the app closed comes back paused.
 
 ## Project layout
 
@@ -54,4 +61,4 @@ The downloader follows up to five safe public redirects, probes servers with `HE
 
 ## Production notes
 
-This MVP keeps job metadata in memory and downloaded files in `downloads/`. For production, add durable job storage, authenticated users, a cleanup policy, object storage, a job queue, a WebSocket progress stream, and a stronger SSRF policy with DNS rebinding protection. Never expose the server as an unrestricted proxy.
+Job history and settings persist to `data/store.json`; downloaded files go to `downloads/` (or the folder chosen in Settings). Progress is polled by the dashboard, so a WebSocket progress stream is still a worthwhile upgrade. Remaining hardening for public deployment: authenticated users, a retention/cleanup policy, and an SSRF policy that also resolves DNS and blocks rebinding. Never expose the server as an unrestricted proxy.

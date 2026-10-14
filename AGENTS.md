@@ -5,8 +5,11 @@
 - The `package-lock.json` committed in this repo had `resolved` URLs pointing to Replit's internal npm proxy (`http://package-firewall.replit.internal/npm/`). These are unreachable outside Replit. They were rewritten to `https://registry.npmjs.org/` so `npm install` works in any environment.
 - The app is single-origin: `tsx server/index.ts` starts an Express server that serves both the `/api/*` endpoints and the Vite React dashboard (middleware mode) on one port. No separate frontend/backend services.
 - The port is controlled by the `PORT` env var (default 5000). The Base44 compose sets `PORT=3000` to match the preview port.
-- No database, no external services, no secrets required. Job metadata is in-memory; downloaded files go to `downloads/`.
+- No database and no external services. Job history and settings persist to `data/store.json` (gitignored, atomic temp-file + rename) and reload on startup; jobs that were `downloading`/`queued` come back `paused`. `DOWNLOAD_DIR` from the environment always overrides the stored download directory. Downloaded files go to `downloads/` by default.
 - Bulk downloads: `POST /api/download/bulk` takes `{ urls: string[], connections }` (1–50 URLs) and returns `{ started: DownloadJob[], failed: { url, error }[] }`, so one bad link does not block the rest. The dashboard's New-download modal accepts a pasted list (split on whitespace/commas) and uses this endpoint when more than one link is given.
+- Every probe and download request sends `Accept-Encoding: identity`. Without it HTTP ranges index the *compressed* body and the assembled file is corrupt — the size/checksum check catches it, but the fix is the header, not the check.
+- Downloads write to `<name>.part` and are renamed to the final name only after the byte count, file size and (optional) sha256 checksum verify, so a partial file is never mistaken for a finished one.
+- Electron: `electron/preload.cjs` exposes only `sda.chooseDirectory/revealFile/openFile` through `contextBridge`, and `main.cjs` rejects any path that is not an existing file inside the OS downloads folder. `sandbox: true`, `nodeIntegration: false`, `contextIsolation: true`, a strict CSP on every response, plus window-open and navigation guards. The renderer feature-detects `window.sda`, so the dashboard also runs in a plain browser. The built `dist/index.html` has only an external module script, so `script-src 'self'` is safe.
 
 ## Running
 

@@ -5,3 +5,7 @@ dist-extension/
 release/
 downloads/
 .env
+
+# Base44 preview environment (local sandbox only)
+docker-compose.base44.yml
+.base44/

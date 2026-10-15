@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -13,14 +13,17 @@ import {
   Info,
   LayoutDashboard,
   Menu,
+  Moon,
   Pause,
   Play,
   RefreshCw,
   RotateCcw,
+  Search,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Sun,
   Timer,
   Trash2,
   Wifi,
@@ -28,7 +31,10 @@ import {
   Zap,
 } from "lucide-react";
 import { api } from "./api";
-import type { AppSettings, DesktopBridge, DownloadJob, DownloadStatus, NetworkInfo } from "./types";
+import { DetailsPanel } from "./components/DetailsPanel";
+import { DownloadToolbar, type StatusFilter } from "./components/DownloadToolbar";
+import { bytes, speed, time, STATUS_LABELS } from "./format";
+import type { AppSettings, DesktopBridge, DownloadJob, NetworkInfo } from "./types";
 
 const demoDownloads: DownloadJob[] = [
   {
@@ -61,30 +67,6 @@ const demoDownloads: DownloadJob[] = [
   },
 ];
 
-const bytes = (value: number) => {
-  if (!value) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.floor(Math.log(value) / Math.log(1024));
-  return `${(value / 1024 ** index).toFixed(index > 1 ? 2 : 0)} ${units[index]}`;
-};
-
-const speed = (value: number) => `${(value / 1_000_000).toFixed(1)} MB/s`;
-
-const time = (seconds: number) => {
-  if (seconds < 60) return `${Math.max(1, Math.round(seconds))} sec`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes} min ${Math.round(seconds % 60)} sec`;
-};
-
-const STATUS_LABELS: Record<DownloadStatus, string> = {
-  queued: "Queued",
-  downloading: "Downloading",
-  paused: "Paused",
-  completed: "Completed",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
-
 function App() {
   const [section, setSection] = useState("Overview");
   const [downloads, setDownloads] = useState<DownloadJob[]>(demoDownloads);
@@ -99,6 +81,14 @@ function App() {
     latency: 18,
     effectiveType: "4g",
   });
+  const [theme, setTheme] = useState<"dark" | "light">(() =>
+    typeof localStorage !== "undefined" && localStorage.getItem("sda.theme") === "light" ? "light" : "dark",
+  );
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
 
   const desktop = (window as Window & { sda?: DesktopBridge }).sda;
 
@@ -138,9 +128,32 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("sda.theme", theme);
+  }, [theme]);
+
   const active = downloads.filter((item) => item.status === "downloading" || item.status === "paused" || item.status === "queued" || item.status === "failed");
   const totalSpeed = active.reduce((sum, item) => sum + item.speed, 0);
   const totalDownloaded = downloads.reduce((sum, item) => sum + item.downloaded, 0);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return active.filter((item) => (filter === "all" || item.status === filter) && (!needle || item.fileName.toLowerCase().includes(needle)));
+  }, [active, query, filter]);
+
+  const filterCounts = useMemo<Record<StatusFilter, number>>(
+    () => ({
+      all: active.length,
+      downloading: active.filter((item) => item.status === "downloading").length,
+      queued: active.filter((item) => item.status === "queued").length,
+      paused: active.filter((item) => item.status === "paused").length,
+      failed: active.filter((item) => item.status === "failed").length,
+    }),
+    [active],
+  );
+
+  const selected = selectedId ? downloads.find((item) => item.id === selectedId) ?? null : null;
 
   const mergeServer = (jobs: DownloadJob[]) => setDownloads((current) => [...jobs, ...current.filter((item) => item.sample)]);
 
@@ -208,6 +221,54 @@ function App() {
     }
   };
 
+  const acceptsDrop = (event: React.DragEvent) => {
+    const types = event.dataTransfer?.types;
+    return !types || Array.from(types).some((type) => type === "Files" || type === "text/uri-list" || type === "text/plain");
+  };
+
+  const handleDragEnter = (event: React.DragEvent) => {
+    if (!acceptsDrop(event)) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  };
+
+  const handleDragOver = (event: React.DragEvent) => {
+    if (!acceptsDrop(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    if (!acceptsDrop(event)) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+  };
+
+  const handleDrop = async (event: React.DragEvent) => {
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    let text = event.dataTransfer?.getData("text/uri-list") || event.dataTransfer?.getData("text/plain") || "";
+    const lists = files.filter((file) => file.type.startsWith("text/") || /\.(txt|list|csv)$/i.test(file.name));
+    if (lists.length) {
+      const contents = await Promise.all(lists.map((file) => file.text()));
+      text = [text, ...contents].join("\n");
+    } else if (files.length) {
+      setToast("Drop a .txt list of links, or paste the URLs instead");
+      return;
+    }
+    const links = text.split(/[\s,]+/).map((value) => value.trim()).filter((value) => /^https?:\/\//i.test(value));
+    if (!links.length) {
+      setToast("No download links found in what you dropped");
+      return;
+    }
+    setUrl(links.join("\n"));
+    setShowAdd(true);
+  };
+
   const nav = [
     { label: "Overview", icon: LayoutDashboard },
     { label: "Active Downloads", icon: CloudDownload, count: active.length },
@@ -215,7 +276,13 @@ function App() {
   ];
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark"><Zap size={18} fill="currentColor" /></div>
@@ -241,7 +308,7 @@ function App() {
         <header className="topbar">
           <button className="mobile-menu"><Menu size={20} /></button>
           <div><p className="eyebrow">WEDNESDAY, SEP 09, 2026</p><h1>{section}</h1></div>
-          <div className="top-actions"><div className="network-pill"><span className="pulse-dot" /><Wifi size={15} /> {network.type}<ChevronRight size={14} /></div><button className="icon-button"><SlidersHorizontal size={18} /></button><div className="avatar">NS</div></div>
+          <div className="top-actions"><div className="network-pill"><span className="pulse-dot" /><Wifi size={15} /> {network.type}<ChevronRight size={14} /></div><button className="icon-button" title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}</button><button className="icon-button" title="Open settings" onClick={() => setSection("Settings")}><SlidersHorizontal size={18} /></button><div className="avatar">NS</div></div>
         </header>
 
         {section === "Settings" ? <SettingsPanel settings={settings} onChange={updateSettings} desktop={desktop} /> : (
@@ -260,13 +327,25 @@ function App() {
             {section === "History" ? <HistoryPanel downloads={downloads} onAction={handleAction} desktop={desktop} /> : (
               <>
                 <section className="section-heading"><div><h3>Active downloads <span>{active.length}</span></h3><p>Adaptive connections are tuned automatically as conditions change.</p></div><div className="heading-actions"><button className="text-button" onClick={pauseAll}><Pause size={14} /> Pause all</button><button className="text-button" onClick={resumeAll}><Play size={14} /> Resume all</button><button className="text-button" onClick={() => setSection("History")}>View history <ChevronRight size={15} /></button></div></section>
+                <DownloadToolbar query={query} onQuery={setQuery} filter={filter} onFilter={setFilter} counts={filterCounts} />
                 <section className="content-grid">
                   <div className="download-list">
-                    {active.length ? active.map((item) => <DownloadCard key={item.id} item={item} onAction={handleAction} />) : <EmptyState onClick={() => setShowAdd(true)} />}
+                    {!active.length ? <EmptyState onClick={() => setShowAdd(true)} /> : visible.length ? visible.map((item) => <DownloadCard key={item.id} item={item} selected={selectedId === item.id} onSelect={() => setSelectedId(item.id)} onAction={handleAction} />) : (
+                      <div className="empty-state">
+                        <div className="empty-icon"><Search size={22} /></div>
+                        <h3>No matching downloads</h3>
+                        <p>Try another search term or switch the status filter.</p>
+                        <button className="secondary-button" onClick={() => { setQuery(""); setFilter("all"); }}>Clear filters</button>
+                      </div>
+                    )}
                   </div>
                   <aside className="right-column">
-                    <NetworkCard network={network} activeConnections={active.reduce((sum, item) => sum + item.connections, 0)} autoOptimize={settings?.autoStart ?? true} />
-                    <DataNote />
+                    {selected ? <DetailsPanel item={selected} onClose={() => setSelectedId(null)} onAction={handleAction} desktop={desktop} /> : (
+                      <>
+                        <NetworkCard network={network} activeConnections={active.reduce((sum, item) => sum + item.connections, 0)} autoOptimize={settings?.autoStart ?? true} />
+                        <DataNote />
+                      </>
+                    )}
                   </aside>
                 </section>
               </>
@@ -276,6 +355,7 @@ function App() {
       </main>
       {showAdd && <DownloadModal url={url} setUrl={setUrl} connections={connections} setConnections={setConnections} onClose={() => setShowAdd(false)} onStart={startDownload} />}
       {toast && <div className="toast"><Check size={16} /> {toast}</div>}
+      {dragging && <div className="drop-overlay"><div className="drop-card"><ArrowDownToLine size={26} /><strong>Drop to add downloads</strong><span>Release links or a .txt file of URLs</span></div></div>}
     </div>
   );
 }
@@ -284,15 +364,15 @@ function MetricCard({ icon, label, value, trend, tone }: { icon: React.ReactNode
   return <div className="metric-card"><div className={`metric-icon ${tone}`}>{icon}</div><div className="metric-label">{label}</div><strong>{value}</strong><small>{trend}</small></div>;
 }
 
-function DownloadCard({ item, onAction }: { item: DownloadJob; onAction: (job: DownloadJob, action: "pause" | "resume" | "retry" | "cancel" | "remove") => void }) {
+function DownloadCard({ item, selected, onSelect, onAction }: { item: DownloadJob; selected: boolean; onSelect: () => void; onAction: (job: DownloadJob, action: "pause" | "resume" | "retry" | "cancel" | "remove") => void }) {
   const progress = Math.min(100, Math.round((item.downloaded / item.fileSize) * 100));
   const canResume = item.status === "paused" || item.status === "failed";
-  return <article className="download-card">
+  return <article className={`download-card ${selected ? "selected" : ""}`} onClick={onSelect}>
     <div className="download-header"><div className="file-type"><ArrowDownToLine size={18} /></div><div className="file-info"><strong title={item.fileName}>{item.fileName}</strong><span>{bytes(item.fileSize)} · {item.supportsRange ? "Range supported" : "Standard download"}</span></div><span className={`download-status ${item.status}`}><i /> {STATUS_LABELS[item.status]}</span><button className="more-button"><span /><span /><span /></button></div>
     <div className="progress-line"><div style={{ width: `${progress}%` }} /></div>
     <div className="download-details"><div><strong>{progress}%</strong><span>{bytes(item.downloaded)} of {bytes(item.fileSize)}</span></div><div><strong>{speed(item.speed)}</strong><span>Current speed</span></div><div><strong>{time(item.eta)}</strong><span>Est. remaining</span></div><div><strong>{item.connections}</strong><span>Connections</span></div></div>
     {item.error ? <p className="download-error">{item.error}</p> : null}
-    <div className="card-footer"><span className="adaptive-label"><Zap size={13} /> Adaptive mode {item.retries ? `· ${item.retries} retry` : "· Stable"}</span><div className="card-actions">{canResume ? <button onClick={() => onAction(item, item.status === "failed" ? "retry" : "resume")}>{item.status === "failed" ? <RotateCcw size={14} /> : <Play size={14} />} {item.status === "failed" ? "Retry" : "Resume"}</button> : <button onClick={() => onAction(item, "pause")}><Pause size={14} /> Pause</button>}<button className="cancel-button" onClick={() => onAction(item, "cancel")}><X size={14} /> Cancel</button><button className="cancel-button" onClick={() => onAction(item, "remove")}><Trash2 size={14} /> Remove</button></div></div>
+    <div className="card-footer"><span className="adaptive-label"><Zap size={13} /> Adaptive mode {item.retries ? `· ${item.retries} retry` : "· Stable"}</span><div className="card-actions" onClick={(event) => event.stopPropagation()}><button onClick={onSelect}><Info size={14} /> Details</button>{canResume ? <button onClick={() => onAction(item, item.status === "failed" ? "retry" : "resume")}>{item.status === "failed" ? <RotateCcw size={14} /> : <Play size={14} />} {item.status === "failed" ? "Retry" : "Resume"}</button> : <button onClick={() => onAction(item, "pause")}><Pause size={14} /> Pause</button>}<button className="cancel-button" onClick={() => onAction(item, "cancel")}><X size={14} /> Cancel</button><button className="cancel-button" onClick={() => onAction(item, "remove")}><Trash2 size={14} /> Remove</button></div></div>
   </article>;
 }
 

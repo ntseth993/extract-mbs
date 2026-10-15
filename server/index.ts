@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { registerAuthRoutes } from "./auth";
 import { downloadManager } from "./download-manager";
 import type { DownloadJob } from "./types";
 import { isSafePublicUrl } from "./url-safety";
@@ -42,6 +43,23 @@ const settingsSchema = z.object({
 const asyncRoute = (handler: express.RequestHandler): express.RequestHandler => (request, response, next) => Promise.resolve(handler(request, response, next)).catch(next);
 
 app.get("/api/health", (_request, response) => response.json({ ok: true, service: "smart-download-accelerator" }));
+
+// Public website config. Installer links come from the environment so the site
+// can be pointed at real release assets without a rebuild; the fallback is the
+// project's GitHub releases page.
+const RELEASES_FALLBACK = "https://github.com/ntseth993/extract-mbs/releases/latest";
+app.get("/api/site/config", (_request, response) => {
+  response.json({
+    version: process.env.APP_VERSION ?? "1.0.0",
+    releases: {
+      windows: process.env.DOWNLOAD_URL_WINDOWS ?? RELEASES_FALLBACK,
+      mac: process.env.DOWNLOAD_URL_MAC ?? RELEASES_FALLBACK,
+      linux: process.env.DOWNLOAD_URL_LINUX ?? RELEASES_FALLBACK,
+    },
+  });
+});
+
+registerAuthRoutes(app);
 
 app.get("/api/settings", (_request, response) => response.json(downloadManager.getSettings()));
 app.put("/api/settings", (request, response) => response.json(downloadManager.updateSettings(settingsSchema.parse(request.body))));
